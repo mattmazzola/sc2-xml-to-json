@@ -241,15 +241,6 @@ export interface IParsedRequires {
     unit: IUnitReference | IUnitReference[];
 }
 
-export function convertRequires(parsedRequires: IParsedRequires): IUnitReference[] {
-    if (Array.isArray(parsedRequires.unit)) {
-        return <IUnitReference[]>parsedRequires.unit;
-    }
-    else {
-        return <IUnitReference[]>[parsedRequires.unit];
-    }
-}
-
 export function convertOneOrMore<T>(parsedInput: T | T[]): T[] {
     return Array.isArray(parsedInput) ? parsedInput : [parsedInput];
 }

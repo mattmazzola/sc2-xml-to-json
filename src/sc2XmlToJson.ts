@@ -6,6 +6,7 @@ import * as xml2js from "xml2js";
 import * as unit from "./unit";
 import * as moment from "moment";
 import * as _ from "lodash";
+import * as util from './util';
 
 const storageAccount = process.env.AZURE_STORAGE_ACCOUNT;
 const storageAccountUrl = process.env.AZURE_STORAGE_ACCOUNT_URL;
@@ -19,70 +20,56 @@ const zipExtractPath = "extract";
 
 const anonymousBlobService: azure.BlobService = azure.createBlobServiceAnonymous(storageAccountUrl);
 const secureBlobService = azure.createBlobService(storageAccount, storageAccessKey);
-const queueService = azure.createQueueService(storageAccount, storageAccessKey);
 
 console.log(`Created blob service to: ${storageAccountUrl}`);
 console.log(`Attempting to download blob from container: ${containerName} with name: ${blobName}`);
 
-const unitsPromise = new Promise<unit.IUnit[]>((resolve, reject) => {
-  anonymousBlobService.getBlobToStream(containerName, blobName, fs.createWriteStream(tempZipFileName), (error, result, response) => {
-    if (error){
-      return reject(error);
-    }
-
-    console.log(`Downloaded blob file to: ${tempZipFileName}`);
-    console.log(result);
+const unitsPromise = util.writeBlobToFile(anonymousBlobService, containerName, blobName, tempZipFileName)
+  .then(zipFilePath => {
+    console.log(`Saved blob file to: ${tempZipFileName}`);
 
     console.log(`Extracting ${tempZipFileName} to directory: ${zipExtractPath}`);
     const zip = new AdmZip(tempZipFileName);
     zip.extractAllTo(zipExtractPath, true);
 
     console.log(`Reading files from extraction directory: ${zipExtractPath}`);
-    fs.readdir(zipExtractPath, (error, filenames) => {
-      if (error) {
-        return reject(error);
-      }
 
-      console.log(filenames);
-
+    return util.readDir(zipExtractPath);
+  })
+  .then(filenames => {
       const filteredFilenames = filenames
         .filter(x => x.indexOf('.xml') !== -1)
         ;
 
-      console.log(filteredFilenames);
-      const unitPromises: Promise<unit.IUnit>[] = filteredFilenames
+      const unitFilePromises = filteredFilenames
         .map(filename => {
           const filepath = path.join(zipExtractPath, filename);
-          console.log(`Reading file: ${filepath}`);
-
-          return new Promise((resolveFile, rejectFile) => {
-            fs.readFile(filepath, 'utf8', (error, data) => {
-              if (error) {
-                return rejectFile(error);
-              }
-
-              console.log(`Converting ${filename} to JSON`);
-
-              const xmlParserOptions: xml2js.Options = {
-                explicitRoot: false,
-                mergeAttrs: true,
-                emptyTag: null,
-                explicitArray: false
-              };
-
-              xml2js.parseString(data, xmlParserOptions, (error, data) => {
-                const unitObject = unit.convertUnit(data);
-                resolveFile(unitObject);
-              });
-            });
-          });
+          return util.readFileAsync(filepath);
         });
 
-      resolve(Promise.all(unitPromises));
-    });
-  });
-})
-  .then(units => {
+      return Promise.all(unitFilePromises);
+  })
+  .then(unitString => {
+    return `<units>${unitString}</units>`;
+  })
+  .then(unitsXml => {
+    const now = moment();
+    const outputBlobName = `${now.format("YYYY-MM-DD-hh-mm-ss")}.xml`;
+    return util.saveBlob(secureBlobService, "balancedataxml", outputBlobName, outputBlobName)
+      .then(() => unitsXml);
+  })
+  .then(unitsXml => {
+    const xmlParserOptions: xml2js.Options = {
+      explicitRoot: false,
+      mergeAttrs: true,
+      emptyTag: null,
+      explicitArray: false
+    };
+
+    return util.xml2jsonAsync(unitsXml, xmlParserOptions);
+  })
+  .then((parsedUnits: { unit: unit.IParsedUnit[] }) => {
+    const units: unit.IUnit[] = parsedUnits.unit.map(parsedUnit => unit.convertUnit(parsedUnit));
     const nonNeutralUnits = units.filter(unit => unit.meta.race !== "neutral");
     const groupedUnits = _.groupBy(nonNeutralUnits, unit => {
       if (unit.meta.icon && unit.meta.icon.indexOf('btn-building') !== -1) {
@@ -102,26 +89,8 @@ const unitsPromise = new Promise<unit.IUnit[]>((resolve, reject) => {
     const blobString = JSON.stringify(groupedUnits);
     const now = moment();
     const outputBlobName = `${now.format("YYYY-MM-DD-hh-mm-ss")}.json`;
-    secureBlobService.createBlockBlobFromText(outputContainerName, outputBlobName, blobString, (error, result, response) => {
-      if (error) {
-        throw error;
-      }
 
-      console.log(`Uploaded json to container: /${outputContainerName}/${outputBlobName}`);
-
-      const message = {
-        name: outputBlobName
-      };
-
-      queueService.createMessage(outputQueueName, new Buffer(JSON.stringify(message)).toString("base64"), (error, response) => {
-        if (error) {
-          throw error;
-        }
-
-        console.log(`Added message to queue indicating upload is complete.`);
-        process.exit();
-      });
-    });
+    return util.saveBlob(secureBlobService, outputContainerName, outputBlobName, blobString);
   })
   .catch(error => {
     throw error;

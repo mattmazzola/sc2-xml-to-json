@@ -16,9 +16,8 @@
             ],
             "env": {
                 "NODE_ENV": "development",
-                "AZURE_BLOB_CONTAINER": "balancedataxml",
+                "AZURE_BLOB_CONTAINER": "balancedatazip",
                 "AZURE_BLOB_OUTPUT_CONTAINER": "balancedatajson",
-                "AZURE_OUTPUT_QUEUE": "json",
                 "AZURE_STORAGE_ACCOUNT": "sc2iq",
                 "AZURE_STORAGE_ACCOUNT_URL": "https://sc2iq.blob.core.windows.net",
                 "AZURE_STORAGE_ACCESS_KEY": "[empty]"
