@@ -14,6 +14,19 @@ export function readFileAsync(filePath: string) {
     });
 }
 
+export function writeFileAsync(filePath: string, contents: string, encoding: string = 'utf8') {
+    return new Promise<void>((resolve, reject) => {
+      fs.writeFile(filePath, contents, encoding, (error) => {
+        if (error) {
+          reject(error);
+          return;
+        }
+
+        resolve();
+      });
+    });
+}
+
 export function readDir(path: string) {
     return new Promise<string[]>((resolve, reject) => {
         fs.readdir(path, (error, filenames) => {

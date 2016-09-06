@@ -5,7 +5,7 @@
             "name": "Launch",
             "type": "node",
             "request": "launch",
-            "program": "${workspaceRoot}/dist/sc2XmlToJson.js",
+            "program": "${workspaceRoot}/dist/sc2ZipToJson.js",
             "stopOnEntry": false,
             "args": [],
             "cwd": "${workspaceRoot}",
